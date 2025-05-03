@@ -38,6 +38,7 @@ app.get('/', (req, res) => {
     ${username ? `
       <a href="/new-topic">Create a New Topic</a><br/>
       <a href="/topics">View All Topics</a><br/>
+      <a href="/subscribed-topics">View Subscribed Topics</a><br/>
       <a href="/logout">Logout</a>
     ` : `
       <form action="/" method="post">
@@ -145,6 +146,28 @@ app.get('/topics', async(req, res) => {
     <a href="/">Back to Home</a>
   `);
 });
+
+app.get('/subscribed-topics', async(req, res) => {
+
+  const db = await getDb();
+  const person = db.collection('Users');
+  const username = req.session.username;
+
+  const user = await person.findOne(
+    {username},
+    {projection: { subscribedTopics: 1, _id: 0} }
+  );
+
+  const subbedTopics = user.subscribedTopics || [];
+  console.log(subbedTopics);
+  //res.send(subbedTopics);
+  res.send(`<h2>Subscribed Topics for ${username}</h2>
+    <ul>
+      <li>${subbedTopics}</li>
+    </ul>
+    <a href="/">Back to home</a>`);
+});
+//10:25 pm ^^ works, but has a small formatting issue that can be fixed.
     
 
 // Start server
