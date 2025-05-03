@@ -1,63 +1,73 @@
-const express = require('express');
-const session = require('express-session');
-const req = require('express/lib/request');
-const { MongoClient } = require('mongodb');
+const express = require("express");
+const session = require("express-session");
+const req = require("express/lib/request");
+const { MongoClient } = require("mongodb");
 
 const app = express();
 const port = 3000;
 
-const uri = "mongodb+srv://KingJunco:dodogama@king-junco.glav4m3.mongodb.net/?retryWrites=true&w=majority&appName=King-Junco";
+const uri =
+  "mongodb+srv://KingJunco:dodogama@king-junco.glav4m3.mongodb.net/?retryWrites=true&w=majority&appName=King-Junco";
 let client;
 let db;
 
 // Session middleware
-app.use(session({
-  secret: 'monster-hunter-secret',
-  resave: false,
-  saveUninitialized: true,
-}));
+app.use(
+  session({
+    secret: "monster-hunter-secret",
+    resave: false,
+    saveUninitialized: true,
+  })
+);
 
 app.use(express.urlencoded({ extended: true }));
 
 // MongoDB connection
 async function getDb() {
   if (!client || !client.topology?.isConnected()) {
-    client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+    client = new MongoClient(uri, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
     await client.connect();
-    db = client.db('Database');
-    console.log('Connected to MongoDB');
+    db = client.db("Database");
+    console.log("Connected to MongoDB");
   }
   return db;
 }
 
 // Home/Login/Register form
-app.get('/', (req, res) => {
+app.get("/", (req, res) => {
   const username = req.session.username;
   res.send(`
-    <h2>${username ? `Welcome, ${username}` : 'Login or Register'}</h2>
-    ${username ? `
+    <h2>${username ? `Welcome, ${username}` : "Login or Register"}</h2>
+    ${
+      username
+        ? `
       <a href="/new-topic">Create a New Topic</a><br/>
       <a href="/topics">View All Topics</a><br/>
       <a href="/subscribed-topics">View Subscribed Topics</a><br/>
       <a href="/logout">Logout</a>
-    ` : `
+    `
+        : `
       <form action="/" method="post">
         <input name="username" placeholder="Username" required />
         <input name="password" type="password" placeholder="Password" required />
         <button type="submit" name="action" value="register">Register</button>
         <button type="submit" name="action" value="login">Login</button>
       </form>
-    `}
+    `
+    }
   `);
 });
 
 // Handle login/register
-app.post('/', async (req, res) => {
+app.post("/", async (req, res) => {
   const db = await getDb();
-  const users = db.collection('Users');
+  const users = db.collection("Users");
   const { username, password, action } = req.body;
 
-  if (action === 'register') {
+  if (action === "register") {
     const existing = await users.findOne({ username });
     if (existing) {
       return res.send('Username already exists. <a href="/">Try again</a>.');
@@ -65,28 +75,30 @@ app.post('/', async (req, res) => {
 
     await users.insertOne({ username, password, subscribedTopics: [] });
     res.send('Registration successful. <a href="/">Login now</a>.');
-  } else if (action === 'login') {
+  } else if (action === "login") {
     const user = await users.findOne({ username, password });
     if (!user) {
       return res.send('Invalid credentials. <a href="/">Try again</a>.');
     }
 
     req.session.username = username; // Save username in session
-    res.redirect('/');
+    res.redirect("/");
   }
 });
 
 // Logout
-app.get('/logout', (req, res) => {
+app.get("/logout", (req, res) => {
   req.session.destroy(() => {
-    res.redirect('/');
+    res.redirect("/");
   });
 });
 
 // Topic creation form — only accessible if logged in
-app.get('/new-topic', (req, res) => {
+app.get("/new-topic", (req, res) => {
   if (!req.session.username) {
-    return res.send('You must be logged in to create a topic. <a href="/">Login</a>');
+    return res.send(
+      'You must be logged in to create a topic. <a href="/">Login</a>'
+    );
   }
 
   res.send(`
@@ -100,21 +112,23 @@ app.get('/new-topic', (req, res) => {
 });
 
 // Handle topic creation + auto-subscribe
-app.post('/new-topic', async (req, res) => {
+app.post("/new-topic", async (req, res) => {
   if (!req.session.username) {
     return res.send('Unauthorized. <a href="/">Login</a>');
   }
 
   const db = await getDb();
-  const topics = db.collection('Message_board');
-  const users = db.collection('Users');
+  const topics = db.collection("Message_board");
+  const users = db.collection("Users");
 
   const username = req.session.username;
   const { topic } = req.body;
 
   const topicExists = await topics.findOne({ name: topic });
   if (topicExists) {
-    return res.send('Topic already exists. <a href="/new-topic">Try another</a>.');
+    return res.send(
+      'Topic already exists. <a href="/new-topic">Try another</a>.'
+    );
   }
 
   await topics.insertOne({ name: topic, createdAt: new Date() });
@@ -124,21 +138,35 @@ app.post('/new-topic', async (req, res) => {
     { $addToSet: { subscribedTopics: topic } }
   );
 
-  res.send(`Topic "${topic}" created and you are now subscribed. <a href="/">Go back</a>`);
+  res.send(
+    `Topic "${topic}" created and you are now subscribed. <a href="/">Go back</a>`
+  );
 });
 
-//display all topics 
-app.get('/topics', async(req, res) => {
+//display all topics
+app.get("/topics", async (req, res) => {
   const db = await getDb();
-  const topics = db.collection('Message_board')
+  const topics = db.collection("Message_board");
 
   const allTopics = await topics.find({}).toArray();
+  const username = req.session.username;
 
-  let list = '<ul>';
-  allTopics.forEach(topic => {
-    list +=  `<li>${topic.name}</li>`;
+  let list = "<ul>";
+  allTopics.forEach((topic) => {
+    list += `<li>${topic.name}
+    ${
+      username
+        ? `
+      <form action="/subscribe" method="POST">
+        <input type = "hidden" name="topic" value="${topic.name}"/>
+        <button type="submit">Subscribe</button>
+      </form>
+    `
+        : ""
+    }
+      </li>`;
   });
-  list += '</ul>'
+  list += "</ul>";
 
   res.send(`
     <h2>All Topics</h2>
@@ -147,20 +175,35 @@ app.get('/topics', async(req, res) => {
   `);
 });
 
-app.get('/subscribed-topics', async(req, res) => {
+app.post("/subscribe", async (req, res) => {
+  const username = req.session.username;
+  const topic = req.body.topic;
 
   const db = await getDb();
-  const person = db.collection('Users');
+  const users = db.collection("Users");
+
+  await users.updateOne(
+    { username },
+    { $addToSet: { subscribedTopics: topic } }
+  );
+
+  res.redirect("/topics");
+});
+
+//display user's subscribed topics
+app.get("/subscribed-topics", async (req, res) => {
+  const db = await getDb();
+  const person = db.collection("Users");
   const username = req.session.username;
 
   const user = await person.findOne(
-    {username},
-    {projection: { subscribedTopics: 1, _id: 0} }
+    { username },
+    { projection: { subscribedTopics: 1, _id: 0 } }
   );
 
   const subbedTopics = user.subscribedTopics || [];
-  let listHtml = '<ul>';
-  subbedTopics.forEach(topic => {
+  let listHtml = "<ul>";
+  subbedTopics.forEach((topic) => {
     listHtml += `
     <li>
       ${topic}
@@ -171,7 +214,7 @@ app.get('/subscribed-topics', async(req, res) => {
     </li>
     `;
   });
-  listHtml += '</ul>';
+  listHtml += "</ul>";
 
   res.send(`
     <h2>Subscribed topics for ${username}</h2>
@@ -180,23 +223,20 @@ app.get('/subscribed-topics', async(req, res) => {
     `);
 });
 
-app.post('/unsubscribe', async(req, res) => {
+//unsubscribe from topics
+app.post("/unsubscribe", async (req, res) => {
   const db = await getDb();
-  const users = db.collection('Users');
+  const users = db.collection("Users");
   const username = req.session.username;
   const removeTopic = req.body.topic;
 
-  if (!username) {
-    return res.send('Not logged in');
-  }
-
   await users.updateOne(
-    {username},
-    {$pull: {subscribedTopics: removeTopic}}
+    { username },
+    { $pull: { subscribedTopics: removeTopic } }
   );
+  console.log(`Removed ${removeTopic} from subscription list`);
 
-  res.redirect('/subscribed-topics');
-
+  res.redirect("/subscribed-topics");
 });
 
 // Start server
