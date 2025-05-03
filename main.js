@@ -159,16 +159,45 @@ app.get('/subscribed-topics', async(req, res) => {
   );
 
   const subbedTopics = user.subscribedTopics || [];
-  console.log(subbedTopics);
-  //res.send(subbedTopics);
-  res.send(`<h2>Subscribed Topics for ${username}</h2>
-    <ul>
-      <li>${subbedTopics}</li>
-    </ul>
-    <a href="/">Back to home</a>`);
+  let listHtml = '<ul>';
+  subbedTopics.forEach(topic => {
+    listHtml += `
+    <li>
+      ${topic}
+      <form action ="/unsubscribe" method="POST">
+        <input type="hidden" name="topic" value="${topic}"/>
+        <button type="submit">Unsubscribe</button>
+      </form>
+    </li>
+    `;
+  });
+  listHtml += '</ul>';
+
+  res.send(`
+    <h2>Subscribed topics for ${username}</h2>
+    ${listHtml}
+    <a href="/">Back to home</a>
+    `);
 });
-//10:25 pm ^^ works, but has a small formatting issue that can be fixed.
-    
+
+app.post('/unsubscribe', async(req, res) => {
+  const db = await getDb();
+  const users = db.collection('Users');
+  const username = req.session.username;
+  const removeTopic = req.body.topic;
+
+  if (!username) {
+    return res.send('Not logged in');
+  }
+
+  await users.updateOne(
+    {username},
+    {$pull: {subscribedTopics: removeTopic}}
+  );
+
+  res.redirect('/subscribed-topics');
+
+});
 
 // Start server
 app.listen(port, () => {
