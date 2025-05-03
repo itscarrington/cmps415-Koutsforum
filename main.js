@@ -117,7 +117,13 @@ app.post('/new-topic', async (req, res) => {
     return res.send('Topic already exists. <a href="/new-topic">Try another</a>.');
   }
 
-  await topics.insertOne({ name: topic, createdAt: new Date() });
+   // Insert the new topic with the accessCount initialized to 0
+   await topics.insertOne({
+    name: topic,
+    createdAt: new Date(),
+    accessCount: 0,  // Initialize access count to 0
+  });
+
 
   await users.updateOne(
     { username },
@@ -135,10 +141,10 @@ app.get('/topics', async(req, res) => {
   const allTopics = await topics.find({}).toArray();
 
   let list = '<ul>';
-  allTopics.forEach(topic => {
-    list +=  `<li>${topic.name}</li>`;
-  });
-  list += '</ul>'
+allTopics.forEach(topic => {
+  list += `<li><a href="/topic/${encodeURIComponent(topic.name)}">${topic.name}</a></li>`;
+});
+list += '</ul>';
 
   res.send(`
     <h2>All Topics</h2>
@@ -198,6 +204,102 @@ app.post('/unsubscribe', async(req, res) => {
   res.redirect('/subscribed-topics');
 
 });
+
+// View messages in a topic (only if subscribed)
+app.get('/topic/:name', async (req, res) => {
+  if (!req.session.username) {
+    return res.send('Please log in to view this topic. <a href="/">Login</a>');
+  }
+
+  const db = await getDb();
+  const users = db.collection('Users');
+  const topics = db.collection('Message_board');
+  const messages = db.collection('Messages');
+  const topicName = req.params.name;
+  const username = req.session.username;
+
+  const user = await users.findOne({ username });
+
+  if (!user || !user.subscribedTopics.includes(topicName)) {
+    return res.send(`You are not subscribed to "${topicName}". <a href="/topics">View topics</a>`);
+  }
+
+  // Increment the access count
+  await topics.updateOne(
+    { name: topicName },
+    { $inc: { accessCount: 1 } }
+  );
+
+  const topicMessages = await messages
+    .find({ topic: topicName })
+    .sort({ timestamp: 1 })
+    .toArray();
+
+  let messageList = '<ul>';
+  topicMessages.forEach(msg => {
+    messageList += `<li><strong>${msg.username}:</strong> ${msg.text}</li>`;
+  });
+  messageList += '</ul>';
+
+  // Get the current access count
+  const topic = await topics.findOne({ name: topicName });
+  const accessCount = topic.accessCount;
+
+  res.send(`
+    <h2>Messages in "${topicName}"</h2>
+    <p>This topic has been viewed ${accessCount} times.</p>
+    ${messageList}
+
+    <form action="/topic/${topicName}" method="POST">
+      <input name="text" placeholder="Type your message" required />
+      <button type="submit">Send</button>
+    </form>
+
+    <a href="/">Back to home</a>
+  `);
+});
+
+
+// Post a message to a topic (only if subscribed)
+app.post('/topic/:name', async (req, res) => {
+  if (!req.session.username) {
+    return res.send('You must be logged in to post. <a href="/">Login</a>');
+  }
+
+  const db = await getDb();
+  const users = db.collection('Users');
+  const messages = db.collection('Messages');
+  const topicName = req.params.name.trim(); // Trim the topic name for any extra spaces
+  const username = req.session.username;
+  const { text } = req.body;
+
+  const user = await users.findOne({ username });
+
+  // Make sure subscribedTopics exists and is an array
+  const subscribedTopics = user?.subscribedTopics || [];
+  
+  // Ensure the topic name is compared without leading/trailing spaces and in a case-insensitive manner
+  if (!user || !subscribedTopics.some(topic => topic.trim().toLowerCase() === topicName.toLowerCase())) {
+    return res.send(`You are not subscribed to "${topicName}". <a href="/topics">View topics</a>`);
+  }
+
+  if (!text || text.trim() === '') {
+    return res.send('Message cannot be empty. <a href="/topic/${topicName}">Go back</a>');
+  }
+
+  // Insert the new message into the database
+  await messages.insertOne({
+    topic: topicName,
+    username,
+    text,
+    timestamp: new Date(),
+  });
+
+  // Redirect to the topic page to show the newly posted message
+  res.redirect(`/topic/${topicName}`);
+});
+
+
 
 // Start server
 app.listen(port, () => {
