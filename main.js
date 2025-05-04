@@ -136,11 +136,17 @@ app.post("/new-topic", async (req, res) => {
     name: topic,
     createdAt: new Date(),
     accessCount: 0, // Initialize access count to 0
+    subscribers: [],
   });
 
   await users.updateOne(
     { username },
     { $addToSet: { subscribedTopics: topic } }
+  );
+  await topics.updateOne(
+    { name: topic },
+    { $addToSet: { subscribers: username } },
+    { upsert: true }
   );
 
   res.send(
@@ -187,10 +193,17 @@ app.post("/subscribe", async (req, res) => {
 
   const db = await getDb();
   const users = db.collection("Users");
+  const board = db.collection("Message_board");
 
   await users.updateOne(
     { username: currentUser },
     { $addToSet: { subscribedTopics: topic } }
+  );
+
+  await board.updateOne(
+    { name: topic },
+    { $addToSet: { subscribers: currentUser } },
+    { upsert: true }
   );
   console.log(`User subscribed to: ${topic}`);
 
@@ -232,6 +245,7 @@ app.get("/subscribed-topics", async (req, res) => {
 app.post("/unsubscribe", async (req, res) => {
   const db = await getDb();
   const users = db.collection("Users");
+  const board = db.collection("Message_board");
   const username = req.session.username;
   const removeTopic = req.body.topic;
 
@@ -242,6 +256,11 @@ app.post("/unsubscribe", async (req, res) => {
   await users.updateOne(
     { username },
     { $pull: { subscribedTopics: removeTopic } }
+  );
+
+  await board.updateOne(
+    {name: removeTopic},
+    { $pull: {subscribers: username} }
   );
 
   res.redirect("/subscribed-topics");
