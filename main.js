@@ -2,6 +2,7 @@ const express = require("express");
 const session = require("express-session");
 const req = require("express/lib/request");
 const { MongoClient } = require("mongodb");
+const Observer = require("./observer");
 
 const app = express();
 const port = 3000;
@@ -123,6 +124,7 @@ app.post("/new-topic", async (req, res) => {
 
   const username = req.session.username;
   const { topic } = req.body;
+  const observer = new Observer(db);
 
   const topicExists = await topics.findOne({ name: topic });
   if (topicExists) {
@@ -139,15 +141,7 @@ app.post("/new-topic", async (req, res) => {
     subscribers: [],
   });
 
-  await users.updateOne(
-    { username },
-    { $addToSet: { subscribedTopics: topic } }
-  );
-  await topics.updateOne(
-    { name: topic },
-    { $addToSet: { subscribers: username } },
-    { upsert: true }
-  );
+  observer.subscribe(username, topic);
 
   res.send(
     `Topic "${topic}" created and you are now subscribed. <a href="/">Go back</a>`
@@ -190,21 +184,10 @@ app.get("/topics", async (req, res) => {
 app.post("/subscribe", async (req, res) => {
   const currentUser = req.session.username;
   const topic = req.body.topic;
+  const observer = new Observer(db);
 
-  const db = await getDb();
-  const users = db.collection("Users");
-  const board = db.collection("Message_board");
+  observer.subscribe(currentUser, topic);
 
-  await users.updateOne(
-    { username: currentUser },
-    { $addToSet: { subscribedTopics: topic } }
-  );
-
-  await board.updateOne(
-    { name: topic },
-    { $addToSet: { subscribers: currentUser } },
-    { upsert: true }
-  );
   console.log(`User subscribed to: ${topic}`);
 
   res.redirect("/topics");
@@ -243,26 +226,15 @@ app.get("/subscribed-topics", async (req, res) => {
 });
 
 app.post("/unsubscribe", async (req, res) => {
-  const db = await getDb();
-  const users = db.collection("Users");
-  const board = db.collection("Message_board");
   const username = req.session.username;
   const removeTopic = req.body.topic;
+  const observer = new Observer(db);
 
   if (!username) {
     return res.send("Not logged in");
   }
 
-  await users.updateOne(
-    { username },
-    { $pull: { subscribedTopics: removeTopic } }
-  );
-
-  await board.updateOne(
-    {name: removeTopic},
-    { $pull: {subscribers: username} }
-  );
-
+  observer.unsubscribe(username, removeTopic);
   res.redirect("/subscribed-topics");
 });
 
@@ -325,7 +297,6 @@ app.post("/topic/:name", async (req, res) => {
     return res.send('You must be logged in to post. <a href="/">Login</a>');
   }
 
-  const db = await getDb();
   const users = db.collection("Users");
   const messages = db.collection("Messages");
   const topicName = req.params.name.trim(); // Trim the topic name for any extra spaces
@@ -362,6 +333,9 @@ app.post("/topic/:name", async (req, res) => {
     text,
     timestamp: new Date(),
   });
+
+  const observer = new Observer(db);
+  await observer.notify(topicName, text);
 
   // Redirect to the topic page to show the newly posted message
   res.redirect(`/topic/${topicName}`);
