@@ -1,14 +1,12 @@
 const express = require("express");
 const session = require("express-session");
-const req = require("express/lib/request");
 const { MongoClient } = require("mongodb");
 const Observer = require("./observer");
 
 const app = express();
 const port = 3000;
 
-const uri =
-  "mongodb+srv://KingJunco:dodogama@king-junco.glav4m3.mongodb.net/?retryWrites=true&w=majority&appName=King-Junco";
+const uri = "mongodb+srv://KingJunco:dodogama@king-junco.glav4m3.mongodb.net/?retryWrites=true&w=majority&appName=King-Junco";
 let client;
 let db;
 
@@ -22,6 +20,7 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public')); // For serving CSS/images
 
 // MongoDB connection
 async function getDb() {
@@ -37,29 +36,133 @@ async function getDb() {
   return db;
 }
 
+// Custom middleware for headers
+app.use((req, res, next) => {
+  res.locals.username = req.session.username;
+  res.locals.isAuthenticated = !!req.session.username;
+  next();
+});
+
+// Message-board layout
+function layout(title, content, res) {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>${title} - koutsforum</title>
+      <style>
+        body {
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 12px;
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 10px;
+          background-color: #eef2ff;
+          color: #000;
+        }
+        .header {
+          background-color: #800;
+          color: white;
+          padding: 5px;
+          margin-bottom: 10px;
+        }
+        .board-title {
+          font-weight: bold;
+          font-size: 24px;
+        }
+        .post {
+          background-color: #f0e0d6;
+          border: 1px solid #d9bfb7;
+          padding: 5px;
+          margin-bottom: 10px;
+        }
+        .post-info {
+          color: #117743;
+          font-weight: bold;
+        }
+        .post-message {
+          margin-top: 5px;
+        }
+        .reply-form {
+          margin-top: 20px;
+        }
+        textarea {
+          width: 100%;
+          height: 100px;
+        }
+        .catalog-item {
+          display: inline-block;
+          width: 200px;
+          vertical-align: top;
+          margin: 5px;
+          padding: 5px;
+          background-color: #f0e0d6;
+          border: 1px solid #d9bfb7;
+        }
+        .catalog-item img {
+          max-width: 100%;
+          max-height: 150px;
+        }
+        .user-controls {
+          float: right;
+          color: white;
+        }
+        a {
+          color: #34345c;
+          text-decoration: none;
+        }
+        a:hover {
+          text-decoration: underline;
+        }
+        .new-thread {
+          background-color: #f0e0d6;
+          padding: 10px;
+          margin-bottom: 20px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <span class="board-title">koutsforum</span>
+        <span class="user-controls">
+          ${res.locals.isAuthenticated ? 
+            `Welcome, ${res.locals.username} | 
+            <a href="/new-topic">New Board</a> | 
+            <a href="/topics">All Boards</a> | 
+            <a href="/subscribed-topics">Your Boards</a> | 
+            <a href="/logout">Logout</a>` : 
+            `<a href="/">Login/Register</a>`}
+        </span>
+      </div>
+      ${content}
+    </body>
+    </html>
+  `;
+}
+
 // Home/Login/Register form
 app.get("/", (req, res) => {
-  const username = req.session.username;
-  res.send(`
-    <h2>${username ? `Welcome, ${username}` : "Login or Register"}</h2>
-    ${
-      username
-        ? `
-      <a href="/new-topic">Create a New Topic</a><br/>
-      <a href="/topics">View All Topics</a><br/>
-      <a href="/subscribed-topics">View Subscribed Topics</a><br/>
-      <a href="/logout">Logout</a>
-    `
-        : `
+  if (res.locals.isAuthenticated) {
+    return res.redirect("/topics");
+  }
+
+  res.send(layout("Login", `
+    <div style="width: 300px; margin: 0 auto;">
+      <h2>Login or Register</h2>
       <form action="/" method="post">
-        <input name="username" placeholder="Username" required />
-        <input name="password" type="password" placeholder="Password" required />
-        <button type="submit" name="action" value="register">Register</button>
-        <button type="submit" name="action" value="login">Login</button>
+        <div style="margin-bottom: 5px;">
+          <input name="username" placeholder="Username" required style="width: 100%;" />
+        </div>
+        <div style="margin-bottom: 5px;">
+          <input name="password" type="password" placeholder="Password" required style="width: 100%;" />
+        </div>
+        <div>
+          <button type="submit" name="action" value="register" style="width: 48%;">Register</button>
+          <button type="submit" name="action" value="login" style="width: 48%;">Login</button>
+        </div>
       </form>
-    `
-    }
-  `);
+    </div>
+  `, res));
 });
 
 // Handle login/register
@@ -71,19 +174,19 @@ app.post("/", async (req, res) => {
   if (action === "register") {
     const existing = await users.findOne({ username });
     if (existing) {
-      return res.send('Username already exists. <a href="/">Try again</a>.');
+      return res.send(layout("Error", 'Username already exists. <a href="/">Try again</a>.', res));
     }
 
     await users.insertOne({ username, password, subscribedTopics: [] });
-    res.send('Registration successful. <a href="/">Login now</a>.');
+    res.send(layout("Success", 'Registration successful. <a href="/">Login now</a>.', res));
   } else if (action === "login") {
     const user = await users.findOne({ username, password });
     if (!user) {
-      return res.send('Invalid credentials. <a href="/">Try again</a>.');
+      return res.send(layout("Error", 'Invalid credentials. <a href="/">Try again</a>.', res));
     }
 
-    req.session.username = username; // Save username in session
-    res.redirect("/");
+    req.session.username = username;
+    res.redirect("/topics");
   }
 });
 
@@ -94,28 +197,30 @@ app.get("/logout", (req, res) => {
   });
 });
 
-// Topic creation form — only accessible if logged in
+// Board creation form
 app.get("/new-topic", (req, res) => {
-  if (!req.session.username) {
-    return res.send(
-      'You must be logged in to create a topic. <a href="/">Login</a>'
-    );
+  if (!res.locals.isAuthenticated) {
+    return res.redirect("/");
   }
 
-  res.send(`
-    <h2>Create New Topic</h2>
-    <form action="/new-topic" method="post">
-      <input name="topic" placeholder="New Topic Name" required />
-      <button type="submit">Create Topic</button>
-    </form>
-    <a href="/">Back to Home</a>
-  `);
+  res.send(layout("New Board", `
+    <div class="new-thread">
+      <h2>Create New Board</h2>
+      <form action="/new-topic" method="post">
+        <input name="topic" placeholder="Board Name (e.g. /mh/ - Monster Hunter General)" required style="width: 100%;" />
+        <div style="margin-top: 10px;">
+          <button type="submit">Create Board</button>
+          <a href="/topics" style="margin-left: 10px;">Cancel</a>
+        </div>
+      </form>
+    </div>
+  `, res));
 });
 
-// Handle topic creation + auto-subscribe
+// Handle board creation + auto-subscribe
 app.post("/new-topic", async (req, res) => {
-  if (!req.session.username) {
-    return res.send('Unauthorized. <a href="/">Login</a>');
+  if (!res.locals.isAuthenticated) {
+    return res.redirect("/");
   }
 
   const db = await getDb();
@@ -128,72 +233,70 @@ app.post("/new-topic", async (req, res) => {
 
   const topicExists = await topics.findOne({ name: topic });
   if (topicExists) {
-    return res.send(
-      'Topic already exists. <a href="/new-topic">Try another</a>.'
-    );
+    return res.send(layout("Error", 'Board already exists. <a href="/new-topic">Try another</a>.', res));
   }
 
-  // Insert the new topic with the accessCount initialized to 0
   await topics.insertOne({
     name: topic,
     createdAt: new Date(),
-    accessCount: 0, // Initialize access count to 0
+    accessCount: 0,
     subscribers: [],
   });
 
   observer.subscribe(username, topic);
 
-  res.send(
-    `Topic "${topic}" created and you are now subscribed. <a href="/">Go back</a>`
-  );
+  res.redirect(`/topic/${encodeURIComponent(topic)}`);
 });
 
-//display all topics
+// Display all boards in catalog style
 app.get("/topics", async (req, res) => {
   const db = await getDb();
   const topics = db.collection("Message_board");
-  const currentUser = req.session.username;
 
-  const allTopics = await topics.find({}).toArray();
+  const allTopics = await topics.find({}).sort({ accessCount: -1 }).toArray();
 
-  let list = "<ul>";
+  let catalog = '<div class="catalog">';
   allTopics.forEach((topic) => {
-    list += `<li><a href="/topic/${encodeURIComponent(topic.name)}">${
-      topic.name
-    }</a>
-    ${
-      currentUser
-        ? ` <form action="/subscribe" method="POST">
-        <input type="hidden" name="topic" value="${topic.name}"/>
-        <button type="submit">Subscribe</button>
-        </form>
-        `
-        : ""
-    }
-      </li>`;
+    catalog += `
+      <div class="catalog-item">
+        <div class="post-info">${topic.name}</div>
+        <div>${topic.accessCount} views</div>
+        <div style="margin-top: 5px;">
+          <a href="/topic/${encodeURIComponent(topic.name)}">Visit</a>
+          ${res.locals.isAuthenticated ? 
+            `| <a href="/subscribe/${encodeURIComponent(topic.name)}">Subscribe</a>` : ''}
+        </div>
+      </div>
+    `;
   });
-  list += "</ul>";
+  catalog += '</div>';
 
-  res.send(`
-    <h2>All Topics</h2>
-    ${list}
-    <a href="/">Back to Home</a>
-  `);
+  res.send(layout("All Boards", `
+    <h2>All Boards</h2>
+    ${catalog}
+    ${res.locals.isAuthenticated ? '<div><a href="/new-topic">Create New Board</a></div>' : ''}
+  `, res));
 });
 
-app.post("/subscribe", async (req, res) => {
-  const currentUser = req.session.username;
-  const topic = req.body.topic;
+// Subscribe to a board
+app.get("/subscribe/:name", async (req, res) => {
+  if (!res.locals.isAuthenticated) {
+    return res.redirect("/");
+  }
+
+  const topic = decodeURIComponent(req.params.name);
   const observer = new Observer(db);
+  observer.subscribe(req.session.username, topic);
 
-  observer.subscribe(currentUser, topic);
-
-  console.log(`User subscribed to: ${topic}`);
-
-  res.redirect("/topics");
+  res.redirect(`/topic/${encodeURIComponent(topic)}`);
 });
 
+// View subscribed boards
 app.get("/subscribed-topics", async (req, res) => {
+  if (!res.locals.isAuthenticated) {
+    return res.redirect("/");
+  }
+
   const db = await getDb();
   const person = db.collection("Users");
   const username = req.session.username;
@@ -204,59 +307,63 @@ app.get("/subscribed-topics", async (req, res) => {
   );
 
   const subbedTopics = user.subscribedTopics || [];
-  let listHtml = "<ul>";
+  let listHtml = '<div class="catalog">';
   subbedTopics.forEach((topic) => {
     listHtml += `
-    <li>
-      ${topic}
-      <form action ="/unsubscribe" method="POST">
-        <input type="hidden" name="topic" value="${topic}"/>
-        <button type="submit">Unsubscribe</button>
-      </form>
-    </li>
+      <div class="catalog-item">
+        <div class="post-info">${topic}</div>
+        <div style="margin-top: 5px;">
+          <a href="/topic/${encodeURIComponent(topic)}">Visit</a>
+          | <a href="/unsubscribe/${encodeURIComponent(topic)}">Unsubscribe</a>
+        </div>
+      </div>
     `;
   });
-  listHtml += "</ul>";
+  listHtml += '</div>';
 
-  res.send(`
-    <h2>Subscribed topics for ${username}</h2>
-    ${listHtml}
-    <a href="/">Back to home</a>
-    `);
+  res.send(layout("Your Boards", `
+    <h2>Your Subscribed Boards</h2>
+    ${subbedTopics.length > 0 ? listHtml : '<p>You are not subscribed to any boards yet.</p>'}
+    <div style="margin-top: 10px;">
+      <a href="/topics">Browse All Boards</a>
+    </div>
+  `, res));
 });
 
-app.post("/unsubscribe", async (req, res) => {
-  const username = req.session.username;
-  const removeTopic = req.body.topic;
-  const observer = new Observer(db);
-
-  if (!username) {
-    return res.send("Not logged in");
+// Unsubscribe from a board
+app.get("/unsubscribe/:name", async (req, res) => {
+  if (!res.locals.isAuthenticated) {
+    return res.redirect("/");
   }
 
-  observer.unsubscribe(username, removeTopic);
+  const topic = decodeURIComponent(req.params.name);
+  const observer = new Observer(db);
+  observer.unsubscribe(req.session.username, topic);
+
   res.redirect("/subscribed-topics");
 });
 
-// View messages in a topic (only if subscribed)
+// View messages in a board (only if subscribed)
 app.get("/topic/:name", async (req, res) => {
-  if (!req.session.username) {
-    return res.send('Please log in to view this topic. <a href="/">Login</a>');
+  if (!res.locals.isAuthenticated) {
+    return res.send(layout("Error", 'Please log in to view this board. <a href="/">Login</a>', res));
   }
 
   const db = await getDb();
   const users = db.collection("Users");
   const topics = db.collection("Message_board");
   const messages = db.collection("Messages");
-  const topicName = req.params.name;
+  const topicName = decodeURIComponent(req.params.name);
   const username = req.session.username;
 
   const user = await users.findOne({ username });
 
   if (!user || !user.subscribedTopics.includes(topicName)) {
-    return res.send(
-      `You are not subscribed to "${topicName}". <a href="/topics">View topics</a>`
-    );
+    return res.send(layout("Error", `
+      You are not subscribed to "${topicName}". 
+      <a href="/subscribe/${encodeURIComponent(topicName)}">Subscribe now</a> or 
+      <a href="/topics">browse other boards</a>
+    `, res));
   }
 
   // Increment the access count
@@ -267,69 +374,70 @@ app.get("/topic/:name", async (req, res) => {
     .sort({ timestamp: 1 })
     .toArray();
 
-  let messageList = "<ul>";
+  let messageList = "";
   topicMessages.forEach((msg) => {
-    messageList += `<li><strong>${msg.username}:</strong> ${msg.text}</li>`;
+    messageList += `
+      <div class="post">
+        <div class="post-info">${msg.username} <span style="color: #707070;">${new Date(msg.timestamp).toLocaleString()}</span></div>
+        <div class="post-message">${msg.text.replace(/\n/g, '<br>')}</div>
+      </div>
+    `;
   });
-  messageList += "</ul>";
 
   // Get the current access count
   const topic = await topics.findOne({ name: topicName });
   const accessCount = topic.accessCount;
 
-  res.send(`
-    <h2>Messages in "${topicName}"</h2>
-    <p>This topic has been viewed ${accessCount} times.</p>
-    ${messageList}
+  res.send(layout(topicName, `
+    <h2>${topicName}</h2>
+    <p style="color: #707070;">This board has been viewed ${accessCount} times.</p>
+    
+    <div style="margin-top: 20px;">
+      ${messageList}
+    </div>
 
-    <form action="/topic/${topicName}" method="POST">
-      <input name="text" placeholder="Type your message" required />
-      <button type="submit">Send</button>
-    </form>
-
-    <a href="/">Back to home</a>
-  `);
+    <div class="new-thread">
+      <h3>Post a Reply</h3>
+      <form action="/topic/${encodeURIComponent(topicName)}" method="POST">
+        <textarea name="text" placeholder="Type your message here..." required></textarea>
+        <div style="margin-top: 5px;">
+          <button type="submit">Post</button>
+        </div>
+      </form>
+    </div>
+    
+    <div style="margin-top: 20px;">
+      <a href="/topics">Back to all boards</a>
+    </div>
+  `, res));
 });
 
-// Post a message to a topic (only if subscribed)
+// Post a message to a board (only if subscribed)
 app.post("/topic/:name", async (req, res) => {
-  if (!req.session.username) {
-    return res.send('You must be logged in to post. <a href="/">Login</a>');
+  if (!res.locals.isAuthenticated) {
+    return res.redirect("/");
   }
 
+  const db = await getDb();
   const users = db.collection("Users");
   const messages = db.collection("Messages");
-  const topicName = req.params.name.trim(); // Trim the topic name for any extra spaces
+  const topicName = decodeURIComponent(req.params.name);
   const username = req.session.username;
   const { text } = req.body;
 
   const user = await users.findOne({ username });
 
-  // Make sure subscribedTopics exists and is an array
-  const subscribedTopics = user?.subscribedTopics || [];
-
-  // Ensure the topic name is compared without leading/trailing spaces and in a case-insensitive manner
-  if (
-    !user ||
-    !subscribedTopics.some(
-      (topic) => topic.trim().toLowerCase() === topicName.toLowerCase()
-    )
-  ) {
-    return res.send(
-      `You are not subscribed to "${topicName}". <a href="/topics">View topics</a>`
-    );
+  if (!user || !user.subscribedTopics.includes(topicName)) {
+    return res.send(layout("Error", `You are not subscribed to "${topicName}".`, res));
   }
 
   if (!text || text.trim() === "") {
-    return res.send(
-      'Message cannot be empty. <a href="/topic/${topicName}">Go back</a>'
-    );
+    return res.redirect(`/topic/${encodeURIComponent(topicName)}`);
   }
 
-  // Insert the new message into the database
   await messages.insertOne({
     topic: topicName,
-    username,
+    username: username, 
     text,
     timestamp: new Date(),
   });
@@ -337,11 +445,10 @@ app.post("/topic/:name", async (req, res) => {
   const observer = new Observer(db);
   await observer.notify(topicName, text);
 
-  // Redirect to the topic page to show the newly posted message
-  res.redirect(`/topic/${topicName}`);
+  res.redirect(`/topic/${encodeURIComponent(topicName)}`);
 });
 
 // Start server
 app.listen(port, () => {
-  console.log(`Server started at http://localhost:${port}`);
+  console.log(`Go to http://localhost:${port}`);
 });
