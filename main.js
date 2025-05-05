@@ -108,7 +108,7 @@ function layout(title, content, res) {
           color: white;
         }
         a {
-          color: #f0e0d6;
+          color:rgb(39, 172, 255);
           text-decoration: none;
         }
         a:hover {
