@@ -108,7 +108,7 @@ function layout(title, content, res) {
           color: white;
         }
         a {
-          color: #34345c;
+          color: #f0e0d6;
           text-decoration: none;
         }
         a:hover {
