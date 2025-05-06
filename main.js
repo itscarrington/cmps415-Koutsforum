@@ -569,7 +569,7 @@ app.get("/notifications", async (req, res) => {
     <ul>
     ${notif.map(
     (look) =>
-      `<li>New message in ${look.event} from user ${look.senderUsername}: ${look.data}</li>`
+      `<li>New message in ${look.event}</li>`
   )}
     </ul>`, res));
 });
