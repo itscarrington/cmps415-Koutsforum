@@ -34,20 +34,26 @@ class Observer {
     );
   }
 
-  async notify(event, data) {
+  async notify(event, data, senderUsername) {
     const users = this.db.collection('Users');
     const notif = this.db.collection('Notifications');
     const subscribers = await users.find({subscribedTopics: event}).toArray();
 
     for (const user of subscribers) {
-      console.log(`Notifying user ${user.username} about event: ${event}`)
+      if (user.username === senderUsername) {
+        continue;
+      }
       await notif.insertOne( {
         username: user.username,
+        senderUsername: senderUsername,
         event: event,
         data: data,
         createdAt: new Date()
       });
+
+      console.log(`Notifying user ${user.username} about event: ${event}`)
     }
   }
+
 }
 module.exports = Observer;
