@@ -113,7 +113,8 @@ app.get("/home", async (req, res) => {
       <div class="user-actions">
         <a href="/new-topic">Create a New Topic</a> | 
         <a href="/topics">View All Topics</a> | 
-        <a href="/subscribed-topics">View Subscribed Topics</a>
+        <a href="/subscribed-topics">View Subscribed Topics</a> | 
+        <a href="/notifications">Notifications</a>
       </div>
       
       <div class="subscribed-content">
@@ -552,6 +553,25 @@ app.post("/topic/:name", async (req, res) => {
   await observer.notify(topicName, text);
 
   res.redirect(`/topic/${encodeURIComponent(topicName)}`);
+});
+
+app.get("/notifications", async (req, res) => {
+  const username = req.session.username;
+  const db = await getDb();
+  const notif = await db
+    .collection("Notifications")
+    .find({ username: username })
+    .sort({ createdAt: -1 })
+    .toArray();
+
+  res.send(`
+    <h2>Notifications</h2>
+    <ul>
+    ${notif.map(
+      (look) =>
+        `<li>New message in ${look.event} from user ${look.username}: ${look.data}</li>`
+    )}
+    </ul>`);
 });
 
 // Start server
