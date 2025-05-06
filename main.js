@@ -65,11 +65,11 @@ app.get("/home", async (req, res) => {
     let subscribedTopicsContent = '';
     
     if (subscribedTopics.length > 0) {
-      subscribedTopicsContent = "<h3>Earliest messages from your subscribed topics:</h3>";
+      subscribedTopicsContent = "<h3>Latest messages from your subscribed topics:</h3>";
       subscribedTopicsContent += "<div class='topic-container'>";
       
       for (const subTopic of subscribedTopics) {
-        // Get the 2 earliest messages for this topic
+        // Get the 2 latest messages for this topic
         const earliestMessages = await messages
           .find({ topic: subTopic })
           .sort({ timestamp: -1 }) // Ascending order - oldest first
