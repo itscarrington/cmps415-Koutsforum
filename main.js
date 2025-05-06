@@ -43,7 +43,108 @@ app.use((req, res, next) => {
   next();
 });
 
-// Message-board layout
+// Home/Login/Register form
+app.get("/home", async (req, res) => {
+  const username = req.session.username;
+  
+  res.locals = {
+    isAuthenticated: !!username,
+    username: username
+  };
+  
+  let content = '';
+  
+  if (username) {
+    const db = await getDb();
+    const users = db.collection("Users");
+    const messages = db.collection("Messages");
+    
+    const user = await users.findOne({ username });
+    const subscribedTopics = user?.subscribedTopics || [];
+    
+    let subscribedTopicsContent = '';
+    
+    if (subscribedTopics.length > 0) {
+      subscribedTopicsContent = "<h3>Earliest messages from your subscribed topics:</h3>";
+      subscribedTopicsContent += "<div class='topic-container'>";
+      
+      for (const subTopic of subscribedTopics) {
+        // Get the 2 earliest messages for this topic
+        const earliestMessages = await messages
+          .find({ topic: subTopic })
+          .sort({ timestamp: -1 }) // Ascending order - oldest first
+          .limit(2)
+          .toArray();
+        
+        // Create a section for this topic using the styling similar to catalog-item
+        subscribedTopicsContent += `
+          <div class="catalog-item">
+            <h4><a href="/topic/${subTopic}">${subTopic}</a></h4>
+        `;
+        
+        if (earliestMessages.length > 0) {
+          subscribedTopicsContent += "<div class='post-messages'>";
+          earliestMessages.forEach(msg => {
+            subscribedTopicsContent += `
+              <div class="post">
+                <div class="post-info">${msg.username}</div>
+                <div class="post-message">${msg.text}</div>
+              </div>
+            `;
+          });
+          subscribedTopicsContent += "</div>";
+        } else {
+          subscribedTopicsContent += "<p>No messages found in this topic.</p>";
+        }
+        
+        subscribedTopicsContent += `
+            <div><a href="/topic/${subTopic}">View all messages</a></div>
+          </div>
+        `;
+      }
+      
+      subscribedTopicsContent += "</div>";
+    } else {
+      subscribedTopicsContent = "<p>You are not subscribed to any topics. <a href='/topics'>Browse topics</a> to subscribe.</p>";
+    }
+    
+    content = `
+      <h2>Welcome, ${username}</h2>
+      <div class="user-actions">
+        <a href="/new-topic">Create a New Topic</a> | 
+        <a href="/topics">View All Topics</a> | 
+        <a href="/subscribed-topics">View Subscribed Topics</a>
+      </div>
+      
+      <div class="subscribed-content">
+        ${subscribedTopicsContent}
+      </div>
+    `;
+  } else {
+    content = `
+      <h2>Login or Register</h2>
+      <div class="post">
+        <form action="/" method="post">
+          <div>
+            <input name="username" placeholder="Username" required />
+          </div>
+          <div>
+            <input name="password" type="password" placeholder="Password" required />
+          </div>
+          <div>
+            <button type="submit" name="action" value="register">Register</button>
+            <button type="submit" name="action" value="login">Login</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }
+  
+  // Use the layout function to wrap the content
+  const html = layout("Home", content, res);
+  res.send(html);
+});
+
 function layout(title, content, res) {
   return `
     <!DOCTYPE html>
@@ -119,6 +220,10 @@ function layout(title, content, res) {
           padding: 10px;
           margin-bottom: 20px;
         }
+        .topic-container {
+          display: flex;
+          flex-wrap: wrap;
+        }
       </style>
     </head>
     <body>
@@ -127,6 +232,7 @@ function layout(title, content, res) {
         <span class="user-controls">
           ${res.locals.isAuthenticated ? 
             `Welcome, ${res.locals.username} | 
+            <a href="/home">Home</a> |
             <a href="/new-topic">New Board</a> | 
             <a href="/topics">All Boards</a> | 
             <a href="/subscribed-topics">Your Boards</a> | 
@@ -143,7 +249,7 @@ function layout(title, content, res) {
 // Home/Login/Register form
 app.get("/", (req, res) => {
   if (res.locals.isAuthenticated) {
-    return res.redirect("/topics");
+    return res.redirect("/home");
   }
 
   res.send(layout("Login", `
@@ -186,7 +292,7 @@ app.post("/", async (req, res) => {
     }
 
     req.session.username = username;
-    res.redirect("/topics");
+    res.redirect("/home");
   }
 });
 
