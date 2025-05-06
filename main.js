@@ -564,14 +564,14 @@ app.get("/notifications", async (req, res) => {
     .sort({ createdAt: -1 })
     .toArray();
 
-  res.send(`
+  res.send(layout("Notifications", `
     <h2>Notifications</h2>
     <ul>
     ${notif.map(
       (look) =>
         `<li>New message in ${look.event} from user ${look.username}: ${look.data}</li>`
     )}
-    </ul>`);
+    </ul>`, res));
 });
 
 // Start server
