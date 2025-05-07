@@ -550,7 +550,7 @@ app.post("/topic/:name", async (req, res) => {
   });
 
   const observer = new Observer(db);
-  await observer.notify(topicName, text);
+  await observer.notify(topicName, text, username);
 
   res.redirect(`/topic/${encodeURIComponent(topicName)}`);
 });
